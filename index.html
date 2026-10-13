@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>線上雲端題庫測驗系統 (5題)</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col items-center py-10 px-4">
+
+    <!-- 頁面標題 -->
+    <header class="max-w-3xl w-full text-center mb-8">
+        <h1 class="text-3xl font-bold text-slate-900 mb-2">🌿 雲端題庫測驗系統</h1>
+        <p class="text-slate-600">已成功連動 Google 試算表題庫，每次隨機抽選 5 題！</p>
+    </header>
+
+    <!-- 操作按鈕區 -->
+    <div class="max-w-3xl w-full flex flex-wrap gap-4 justify-center mb-8">
+        <button onclick="loadAndDrawQuestions()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-6 py-2.5 rounded-xl shadow transition cursor-pointer">
+            🎲 重新載入並隨機抽 5 題
+        </button>
+        <button onclick="toggleAllAnswers()" id="toggle-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-6 py-2.5 rounded-xl shadow transition cursor-pointer">
+            👁️ 顯示所有答案
+        </button>
+    </div>
+
+    <!-- 載入狀態與題目列表容器 -->
+    <main id="quiz-container" class="max-w-3xl w-full space-y-6">
+        <div class="text-center py-12 text-slate-500">正在從 Google 試算表讀取題庫中...</div>
+    </main>
+
+    <script>
+        // 已經幫你填好真實的 Google 試算表 CSV 網址了！
+        const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRbr7IIF1a-AjS6ZT3JJnipKlWvqbG3__-3JQWJI8oq1vGqt2eg6bT45FHNwk9QzRTHYp7x7T5--5go/pub?output=csv";
+
+        let allQuestions = [];
+        let showAnswersState = false;
+
+        // 1. 讀取 Google 試算表 CSV
+        async function loadAndDrawQuestions() {
+            const container = document.getElementById('quiz-container');
+            container.innerHTML = `<div class="text-center py-12 text-slate-500">正在從雲端更新題庫...</div>`;
+
+            try {
+                const response = await fetch(SHEET_CSV_URL);
+                if (!response.ok) throw new Error('無法連線至 Google 試算表，請確認網址是否正確或試算表是否已發布。');
+                
+                const csvText = await response.text();
+                allQuestions = parseCSV(csvText);
+
+                if (allQuestions.length === 0) {
+                    throw new Error('試算表中沒有讀到任何題目，請檢查格式是否正確。');
+                }
+
+                drawRandomQuestions();
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="bg-red-50 border border-red-200 text-red-700 p-6 rounded-2xl text-center shadow-sm">
+                        <p class="font-bold text-lg mb-1">⚠️ 讀取雲端題庫發生錯誤</p>
+                        <p class="text-sm mt-1">${error.message}</p>
+                        <p class="text-xs text-slate-500 mt-3">提示：請確認 Google 試算表已完成「發布到網路」且格式選取為 CSV。</p>
+                    </div>
+                `;
+            }
+        }
+
+        // 2. 解析 CSV 資料格式
+        function parseCSV(text) {
+            const lines = text.trim().split('\n');
+            const result = [];
+            
+            for (let i = 1; i < lines.length; i++) {
+                const row = lines[i].trim();
+                if (!row) continue;
+                
+                const matches = [];
+                let inQuotes = false;
+                let current = '';
+                
+                for (let charIndex = 0; charIndex < row.length; charIndex++) {
+                    const char = row[charIndex];
+                    if (char === '"') {
+                        inQuotes = !inQuotes;
+                    } else if (char === ',' && !inQuotes) {
+                        matches.push(current.trim());
+                        current = '';
+                    } else {
+                        current += char;
+                    }
+                }
+                matches.push(current.trim());
+                
+                if (matches.length >= 5) {
+                    const rawOptions = matches[2].replace(/^"|"$/g, '');
+                    const optionsArray = rawOptions.split('|').map(opt => opt.trim());
+
+                    result.push({
+                        id: matches[0],
+                        question: matches[1].replace(/^"|"$/g, ''),
+                        options: optionsArray,
+                        answer: matches[3].replace(/^"|"$/g, '').toUpperCase(),
+                        explanation: matches[4].replace(/^"|"$/g, '')
+                    });
+                }
+            }
+            return result;
+        }
+
+        // 3. 隨機抽 5 題並渲染到畫面上
+        function drawRandomQuestions() {
+            showAnswersState = false;
+            document.getElementById('toggle-btn').innerText = '👁️ 顯示所有答案';
+
+            const count = Math.min(5, allQuestions.length);
+            const shuffled = [...allQuestions].sort(() => 0.5 - Math.random());
+            const selected = shuffled.slice(0, count);
+
+            const container = document.getElementById('quiz-container');
+            container.innerHTML = '';
+
+            selected.forEach((q, index) => {
+                const optionsHtml = q.options.map(opt => {
+                    const optLetter = opt.charAt(0);
+                    return `
+                        <button onclick="checkAnswer(this, '${optLetter}', '${q.answer}', 'q-${index}')" 
+                            class="option-btn-${index} w-full text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 px-4 py-2.5 rounded-xl text-sm text-slate-700 transition cursor-pointer">
+                            ${opt}
+                        </button>
+                    `;
+                }).join('');
+
+                const card = document.createElement('div');
+                card.className = "bg-white border border-slate-200 rounded-2xl p-6 shadow-sm";
+                card.innerHTML = `
+                    <div class="flex items-start justify-between gap-4 mb-3">
+                        <h2 class="font-semibold text-slate-900 text-base">
+                            <span class="inline-block bg-emerald-100 text-emerald-800 text-xs px-2.5 py-1 rounded-md font-bold mr-2">第 ${index + 1} 題</span>
+                            ${q.question}
+                        </h2>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-4" id="q-${index}-options">
+                        ${optionsHtml}
+                    </div>
+                    <div class="answer-box hidden mt-4 pt-4 border-t border-slate-100 text-sm">
+                        <p class="text-emerald-700 font-bold mb-1">✅ 正確答案：${q.answer}</p>
+                        <p class="text-slate-600 bg-slate-50 p-3 rounded-xl">💡 解析：${q.explanation}</p>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // 4. 檢查作答結果
+        function checkAnswer(buttonElement, selectedLetter, correctLetter, questionIdPrefix) {
+            const parentContainer = document.getElementById(`${questionIdPrefix}-options`);
+            const allButtons = parentContainer.querySelectorAll('button');
+            allButtons.forEach(btn => btn.disabled = true);
+
+            if (selectedLetter === correctLetter) {
+                buttonElement.classList.remove('bg-slate-50', 'hover:bg-slate-100', 'border-slate-200', 'text-slate-700');
+                buttonElement.classList.add('bg-emerald-100', 'border-emerald-500', 'text-emerald-900', 'font-bold');
+                buttonElement.innerHTML += ' ✅ (你的選擇 - 正確)';
+            } else {
+                buttonElement.classList.remove('bg-slate-50', 'hover:bg-slate-100', 'border-slate-200', 'text-slate-700');
+                buttonElement.classList.add('bg-rose-100', 'border-rose-500', 'text-rose-900', 'font-bold');
+                buttonElement.innerHTML += ' ❌ (你的選擇)';
+
+                allButtons.forEach(btn => {
+                    if (btn.innerText.startsWith(correctLetter)) {
+                        btn.classList.remove('bg-slate-50', 'hover:bg-slate-100', 'border-slate-200', 'text-slate-700');
+                        btn.classList.add('bg-emerald-50', 'border-emerald-400', 'text-emerald-800', 'font-bold');
+                        btn.innerHTML += ' 👈 (正確答案)';
+                    }
+                });
+            }
+
+            const card = parentContainer.closest('div.bg-white');
+            const answerBox = card.querySelector('.answer-box');
+            answerBox.classList.remove('hidden');
+        }
+
+        // 5. 切換全部答案顯示狀態
+        function toggleAllAnswers() {
+            showAnswersState = !showAnswersState;
+            const answerBoxes = document.querySelectorAll('.answer-box');
+            const btn = document.getElementById('toggle-btn');
+
+            answerBoxes.forEach(box => {
+                if (showAnswersState) {
+                    box.classList.remove('hidden');
+                } else {
+                    box.classList.add('hidden');
+                }
+            });
+
+            btn.innerText = showAnswersState ? '🔒 隱藏所有答案' : '👁️ 顯示所有答案';
+        }
+
+        // 頁面載入時自動從 Google 試算表抓取題目
+        window.onload = loadAndDrawQuestions;
+    </script>
+</body>
+</html>
